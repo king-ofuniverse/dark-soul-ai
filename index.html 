@@ -1,0 +1,181 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0812">
+<title>DARK SOUL AI</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0812;--panel:#171020;--line:#38254b;--purple:#b77aff;--text:#f6efff;--muted:#b7a8c7}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#28143c,var(--bg) 60%);color:var(--text);font:16px system-ui,sans-serif;min-height:100dvh}
+.app{max-width:760px;margin:auto;min-height:100dvh;display:flex;flex-direction:column;padding:16px}
+header{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding:8px 0 16px}
+.logo{width:48px;height:48px;border-radius:16px;background:linear-gradient(140deg,#bd80ff,#4c2472);display:grid;place-items:center;font-size:27px;box-shadow:0 0 25px #a855f755}
+h1{font-size:17px;letter-spacing:2px;margin:0}
+.sub{font-size:11px;color:var(--muted);margin-top:4px}
+.status{margin-left:auto;color:#cda7ff;font-size:11px}
+.hero{text-align:center;padding:25px 0 16px}
+.orb{width:105px;height:105px;margin:auto auto 15px;border-radius:50%;display:grid;place-items:center;font-size:53px;background:radial-gradient(circle,#673b88,#171020 72%);border:1px solid #c38aff;box-shadow:0 0 35px #a855f755}
+.hero h2{margin:0;font-size:23px}
+.hero p{font-size:13px;color:var(--muted)}
+#messages{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px 0 20px}
+.msg{padding:12px 14px;border-radius:16px;max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.user{align-self:flex-end;background:#543174;border-bottom-right-radius:5px}
+.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:5px}
+.label{font-size:10px;color:#d2aaff;margin-bottom:5px;letter-spacing:1px}
+.composer{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 12%);padding:12px 0}
+textarea{width:100%;min-height:62px;max-height:180px;resize:vertical;background:#15101e;border:1px solid var(--line);border-radius:16px;padding:14px;color:var(--text);font:inherit}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;align-items:center}
+button{background:#20152b;border:1px solid #53376c;border-radius:12px;padding:11px 13px;color:var(--text);font:inherit;cursor:pointer}
+button:disabled{opacity:.5}
+.primary{background:linear-gradient(135deg,#b77aff,#7740ad);border:0;font-weight:700;margin-left:auto}
+.toggle{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+#notice{font-size:12px;color:var(--muted);padding:9px 0;white-space:pre-wrap}
+footer{text-align:center;color:#8e7da1;font-size:11px;padding:8px}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo">☾</div>
+  <div><h1>DARK SOUL AI</h1><div class="sub">YOUR AI COMPANION</div></div>
+  <div class="status" id="status">READY</div>
+</header>
+
+<section class="hero">
+  <div class="orb">👁️‍🗨️</div>
+  <h2>I'm here, bro.</h2>
+  <p>Ask anything. Let's talk. 🖤</p>
+</section>
+
+<div id="messages" aria-live="polite">
+  <div class="msg bot"><div class="label">DARK SOUL</div>Hey bro! 🖤 I'm ready to chat. Send me a message to begin.</div>
+</div>
+
+<div class="composer">
+  <textarea id="prompt" placeholder="Type your message..." rows="2"></textarea>
+  <div class="controls">
+    <button id="mic">🎙 Speak</button>
+    <button id="stopVoice">🔇 Stop voice</button>
+    <label class="toggle"><input id="autoVoice" type="checkbox"> Voice replies</label>
+    <button id="send" class="primary">Send ➤</button>
+  </div>
+  <div id="notice">Connect your AI key on the secure backend to begin.</div>
+</div>
+<footer>Dark Soul AI · Protect your personal information</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const messages = [];
+let busy = false;
+
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "user" ? "user" : "bot");
+  const label = document.createElement("div");
+  label.className = "label";
+  label.textContent = role === "user" ? "YOU" : "DARK SOUL";
+  const content = document.createElement("div");
+  content.textContent = text;
+  div.append(label, content);
+  $("messages").appendChild(div);
+  div.scrollIntoView({behavior:"smooth",block:"end"});
+  return div;
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) {
+    $("notice").textContent = "Voice output isn't supported in this browser.";
+    return;
+  }
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1;
+  utterance.pitch = 0.95;
+  speechSynthesis.speak(utterance);
+}
+
+async function sendMessage(text) {
+  text = (text || $("prompt").value).trim();
+  if (!text || busy) return;
+
+  $("prompt").value = "";
+  messages.push({role:"user", text});
+  addMessage("user", text);
+  busy = true;
+  $("send").disabled = true;
+  $("status").textContent = "THINKING...";
+  $("notice").textContent = "Connecting to the AI...";
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({messages:messages.slice(-20)})
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "AI request failed.");
+
+    const reply = data.reply;
+    if (!reply) throw new Error("The AI returned an empty answer.");
+
+    messages.push({role:"model", text:reply});
+    addMessage("model", reply);
+    $("notice").textContent = "AI reply received.";
+    if ($("autoVoice").checked) speak(reply);
+  } catch (err) {
+    $("notice").textContent = "Error: " + err.message;
+    addMessage("model", "Bro, I couldn't connect right now. Check the backend setup and try again.");
+  } finally {
+    busy = false;
+    $("send").disabled = false;
+    $("status").textContent = "READY";
+  }
+}
+
+$("send").addEventListener("click", () => sendMessage());
+$("prompt").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+$("stopVoice").addEventListener("click", () => {
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+});
+
+$("mic").addEventListener("click", () => {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    $("notice").textContent = "Speech recognition isn't supported here. Try Chrome or type your message.";
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "en-IN";
+  recognition.interimResults = false;
+  recognition.onstart = () => {
+    $("status").textContent = "LISTENING...";
+    $("notice").textContent = "Speak now...";
+  };
+  recognition.onresult = event => {
+    const transcript = event.results[0][0].transcript;
+    $("prompt").value = transcript;
+    sendMessage(transcript);
+  };
+  recognition.onerror = event => {
+    $("notice").textContent = "Microphone error: " + event.error;
+    $("status").textContent = "READY";
+  };
+  recognition.onend = () => {
+    if (!busy) $("status").textContent = "READY";
+  };
+  recognition.start();
+});
+</script>
+</body>
+</html>
