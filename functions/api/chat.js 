@@ -1,0 +1,88 @@
+
+export async function onRequestPost({ request, env }) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store"
+  };
+
+  try {
+    if (!env.GEMINI_API_KEY) {
+      return Response.json(
+        { error: "AI key is missing. Set GEMINI_API_KEY in Cloudflare Secrets." },
+        { status: 500, headers }
+      );
+    }
+
+    const body = await request.json();
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      return Response.json(
+        { error: "Send at least one message." },
+        { status: 400, headers }
+      );
+    }
+
+    const contents = body.messages.slice(-20).map(message => {
+      const role = message.role === "model" ? "model" : "user";
+      const text = String(message.text || "").slice(0, 6000);
+      return { role, parts: [{ text }] };
+    }).filter(message => message.parts[0].text.trim());
+
+    if (!contents.length || contents[contents.length - 1].role !== "user") {
+      return Response.json(
+        { error: "The last message must be from the user." },
+        { status: 400, headers }
+      );
+    }
+
+    const aiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{
+              text: "You are Dark Soul AI, a friendly, thoughtful AI companion. Be helpful, honest, warm, and clear. The user may speak Tamil, Tanglish, or English; reply in the language they use. Never claim to have done something you did not do. You are an AI, not a human."
+            }]
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 800
+          }
+        })
+      }
+    );
+
+    const result = await aiResponse.json();
+
+    if (!aiResponse.ok) {
+      return Response.json(
+        { error: result.error?.message || "AI provider request failed." },
+        { status: aiResponse.status, headers }
+      );
+    }
+
+    const reply = (result.candidates?.[0]?.content?.parts || [])
+      .map(part => part.text || "")
+      .join("")
+      .trim();
+
+    if (!reply) {
+      return Response.json(
+        { error: "The AI returned no text. Try again." },
+        { status: 502, headers }
+      );
+    }
+
+    return Response.json({ reply }, { headers });
+  } catch (error) {
+    return Response.json(
+      { error: "Server error. Check the request and backend configuration." },
+      { status: 500, headers }
+    );
+  }
+}
